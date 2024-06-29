@@ -1,0 +1,452 @@
+---
+title: "Liver Risk Analysis"
+author: "Sercan Tomaz"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+First, let's load our dataset.
+
+```{r Loading the data set}
+df <- read.csv("liver.risk.data.csv", sep = ",")
+```
+
+Let's examine the dimensions of our dataset.
+
+```{r Dimensions of the data set}
+dim(df)
+```
+
+Let's move our response column to the last column.
+
+```{r Arranging the cols, message=FALSE, warning=FALSE}
+library(dplyr)
+df <- select(df, c(1, (3:14), 2))
+```
+
+The structure of our dataset
+
+```{r Structure of the data set}
+str(df)
+```
+
+Let's now assign this "Sex" column as a factor.
+
+```{r Changing the str of the necessary col(s)}
+df$Sex <- factor(df$Sex, levels = c("m", "f"),labels = c("Male", "Female"))
+str(df)
+```
+
+Let's separate the "Category" column and reassign the required portion back to the "Category" column, and then delete the other column
+
+```{r Necessary processes, message=FALSE, warning=FALSE}
+library(splitstackshape)
+df <- cSplit(df, "Category", "=")
+df <- select(df, -14)
+colnames(df) [14] <- "Category"
+```
+
+Let's now identify the NA values and explore how we can replace them with appropriate values. The columns ALB, ALT, PROT, CHOL, and ALP contain NA values.
+
+```{r Checking the NA values, message=FALSE, warning=FALSE}
+library(mice)
+md.pattern(df)
+```
+
+For the ALB column, we need to perform missing value imputation.
+
+```{r Missing value imputation for the ALB col}
+av.alb <- df %>%
+  group_by(Category) %>%
+  summarise(mean.alb = mean(ALB, na.rm = TRUE))
+
+for (i in 1:nrow(df)) {
+  if (is.na(df$ALB[i])) {
+    df$ALB[i] <- av.alb$mean.alb[av.alb$Category == df$Category[i]]
+  }
+}
+```
+
+For the ALT column, missing value imputation has been done.
+
+```{r Missing value imputation for the ALT col}
+avg.alt <- df %>%
+  group_by(Category) %>%
+  summarise(mean.alt = mean(ALT, na.rm = TRUE))
+
+for (i in 1:nrow(df)) {
+  if (is.na(df$ALT [i])) {
+    df$ALT[i] <- avg.alt$mean.alt [avg.alt$Category == df$Category [i]]
+  }
+}
+```
+
+For the PROT column, missing value imputation has been done.
+
+```{r Missing value imputation for the PROT col}
+avg.prot <- df %>%
+  group_by(Category) %>%
+  summarize(mean.prot = mean(PROT, na.rm = TRUE))
+
+for (i in 1:nrow(df)) {
+  if (is.na(df$PROT [i])) {
+    df$PROT [i] <- avg.prot$mean.prot [avg.prot$Category == df$Category [i]]
+  }
+}
+```
+
+For the CHOL column, missing value imputation has been done.
+
+```{r Missing value imputation for the CHOL col}
+avg.chol <- df %>%
+  group_by(Category) %>%
+  summarize(mean.chol = mean(CHOL, na.rm = TRUE))
+
+for (i in 1:nrow(df)) {
+  if (is.na(df$CHOL [i])) {
+    df$CHOL [i] <- avg.chol$mean.chol [avg.chol$Category == df$Category [i]]
+  }
+}
+```
+
+For the ALP column, missing value imputation has been done.
+
+```{r Missing value imputation for the ALP col}
+avg.alp <- df %>%
+  group_by(Category) %>%
+  summarize(mean.alp = mean(ALP, na.rm = TRUE))
+
+for (i in 1:nrow(df)) {
+  if (is.na(df$ALP [i])) {
+    df$ALP [i] <- avg.alp$mean.alp [avg.alp$Category == df$Category [i]]
+  }
+}
+```
+
+We have completed our missing value imputation process, and we have replaced the missing values with the category-wise averages. Now, let's review and verify that we have obtained the complete dataset.
+
+```{r Checking the NA values after imputation process}
+md.pattern(df)
+```
+
+Now, let's examine the relationships between the columns in our dataset through EDA.
+
+First, let's examine the number of patients by category. Looking at our graph, we observe a statistically unbalanced distribution. The majority of patients fall under the Blood Donor category, and there is a noticeable difference when compared to the number of patients in other categories. This is an important factor to consider when developing machine learning models, as predictions for categories with fewer patients may be less accurate or some patients may be missed.
+
+```{r Bar plot by category, warning=FALSE}
+library(ggplot2)
+ggplot(df, aes(x = Category)) +
+  geom_bar(aes(fill = Category)) +
+  ggtitle("# of Patients by Category") +
+  labs(x = "Category",
+       y = "# of Patients",
+       caption = "Prepared by ST") +
+  geom_text(stat = "count", aes(label = ..count..),
+            position = position_dodge(width = 0.9),
+            vjust = 0.1,
+            hjust = 0.5)
+```
+
+Based on the provided correlation matrix, several variables exhibit significant correlations. Albumin (ALB) and Protein (PROT) show a strong positive correlation. Aspartate Aminotransferase (AST) and Gamma-Glutamyl Transferase (GGT) demonstrate a moderate positive correlation, as do Cholinesterase (CHE) and Cholesterol (CHOL), as well as GGT and Alkaline Phosphatase (ALP). Additionally, CHE and PROT, CHE and ALB, and ALB and CHOL each display moderate positive correlations. These correlations should be considered in medical analyses and modeling.
+
+```{r Correlation matrix, warning=FALSE}
+library(corrgram)
+corrgram(df [, 4:13], upper.panel = panel.cor)
+```
+
+We examined the correlation matrix and identified the variables that are correlated with each other. Now, let's visualize them collectively on a scatter plot.
+
+```{r Multiple scatter plots of the all variables}
+pairs(df [, 4:13])
+```
+
+We are calculating the average age of the patients, and median in order to display it on a histogram of ages.
+
+```{r Calculating the mean and median of the age}
+mean.age <- mean(df$Age)
+median.age <- median(df$Age)
+```
+
+Upon examining our histogram, we can make the following observations. Our histogram is not skewed to either side, hence it can be considered to have an ALMOST SYMMETRIC DISTRIBUTION. The dashed line highlighted in green represents the mean, which is 47.41 years old. Meanwhile, our median, depicted in red, is very close to the mean age at 47. Based on this, we can reaffirm and demonstrate that our dataset is symmetric. Looking at the distribution of ages, we observe a concentration of patients around the mean age. Additionally, I notice a potential outlier at the age of 75, but this is merely an interpretation based on the histogram. The safest conclusion will be provided by a box plot analysis.
+
+```{r Age histogram with density distribution, warning=FALSE}
+ggplot(df, aes(x = Age)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 30,
+                 color = "black",
+                 fill = "hotpink") +
+  scale_x_continuous(breaks = seq(0, 80, by = 5)) +
+  geom_density(color = "black",
+               size = 0.8) +
+  geom_vline(aes(xintercept = mean.age),
+             linetype = "dashed",
+             size = 1,
+             color = "green") +
+  ggtitle("Distribution of Age") +
+  labs(x = "Age",
+       y = "Frequency",
+       caption = "Prepared by ST"
+  ) +
+  geom_vline(aes(xintercept = median.age),
+             linetype = "dashed",
+             size = 1,
+             color = "red")
+```
+
+When examining the multiple box plots, we observe that there are outlier values within different age groups. The average age is highest for Cirrhosis patients, while the average age is lowest for Hepatitis patients.
+
+```{r Box plot of age by category}
+ggplot(df, aes(x = Category,
+               y = Age)) +
+  geom_boxplot(aes(fill = Category),
+               color = "black") +
+  scale_y_continuous(breaks = seq(18, 80, by = 2)) +
+  ggtitle("Multiple Box Plots of Age Distribution by Category") +
+  labs(caption = "Prepared by ST")
+```
+
+When examining the bar plot for genders, we see that males are the majority with 377, while females number 238.
+
+```{r Bar plot by sex}
+ggplot(df, aes(x = Sex)) +
+  geom_bar(aes(fill = Sex),
+           color = "black") +
+  geom_text(stat = "count", aes(label = ..count..),
+            position = position_dodge(width = 0.9),
+            vjust = 1.5,
+            hjust = 0.5) +
+  ggtitle("# of Patients by Sex") +
+  labs(y = "# of Patients",
+       caption = "Prepared by St")
+```
+
+When we examine the ALB / PROT scatter plot, we observe a strong positive correlation of 0.55. Patients in the suspect blood donor category tend to have lower ALB and PROT values compared to those in other categories. Looking at the cirrhosis category, we particularly notice that the ALB value is lower compared to the fibrosis and hepatitis categories. However, fibrosis and hepatitis patients have higher ALB values compared to patients in the cirrhosis category.
+
+```{r Scatter plot of ALB VS. PROT}
+ggplot(df, aes(x = ALB,
+               y = PROT)) +
+  geom_point(aes(color = Category,
+                 shape = Category),
+             size = 1.5,
+             alpha = 0.8) +
+  scale_x_continuous(breaks = seq(0, 90, by = 5)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5)) +
+  ggtitle("Scatter Plot of ALB vs. PROT") +
+  labs(caption = "Prepared by ST")
+```
+
+When examining the AST vs. ALT scatter plot for cirrhotic patients, the following observation can be made: Upon reviewing the graph, it is noteworthy that the predominance of AST \> ALT condition is apparent among patients in the cirrhosis category. As non-medical professionals, we are making interpretations solely based on the values, and one of the significant interpretations we can make from this plot is the potential role of AST/ALT ratio in detecting liver diseases.
+
+```{r Scatter plot of AST VS. ALT}
+ggplot(data = subset(df, Category = "Cirrhosis"), aes(x = AST, y = ALT)) +
+  geom_point(data = subset(df, AST > ALT & Category == "Cirrhosis"),
+             size = 1.5, alpha = 0.8, aes(color = "AST > ALT")) +
+  geom_point(data = subset(df, AST <= ALT & Category == "Cirrhosis"),
+             size = 1.5, alpha = 0.8, aes(color = "AST <= ALT")) +
+  scale_x_continuous(breaks = seq(0, 300, by = 20)) +
+  scale_y_continuous(breaks = seq(0, 300, by = 20)) +
+  ggtitle("Scatter Plot of AST vs. ALT for Cirrhosis Patients") +
+  labs(caption = "Prepared by ST",
+       color = "AST vs. ALT Relationship")
+
+```
+
+When we examine the ALP vs. GGT scatter plot for cirrhosis and fibrosis patients, we can make the following observations: Cirrhosis patients tend to have higher ALP values compared to fibrosis patients. At the same time, there is a positive correlation of 0.43 between them.
+
+```{r Scatter plot of ALP VS. GGT for Cirrhosis and Fibrosis patients}
+ggplot(data = subset(df, Category == "Cirrhosis" | Category == "Fibrosis"), aes(x = ALP, y = GGT)) +
+  geom_point(aes(color = Category)) +
+  scale_x_continuous(breaks = seq(0, 400, by = 50)) +
+  scale_y_continuous(breaks = seq(0, 600, by = 50)) +
+  ggtitle("Scatter Plot of ALP vs. GGT for Cirrhosis & Fibrosis Patients") +
+  labs(caption = "Prepared by ST")
+```
+
+In examining the scatter plot for CHE (cholinesterase) versus CHOL (cholesterol) values among patients with Cirrhosis, Fibrosis, and Hepatitis, we gain valuable insights into the impact of these conditions on liver functions. Notably, it is evident that patients with Cirrhosis exhibit significantly lower CHE values compared to those with Fibrosis and Hepatitis. This observation suggests a more pronounced impairment of liver function in Cirrhosis patients. In contrast, for patients with Fibrosis and Hepatitis, it is challenging to draw similar conclusions due to the variability in CHE and CHOL values, which tend to fluctuate based on the severity of the disease. Generally, these values exhibit less pronounced changes compared to Cirrhosis patients and are more dispersed across the plot. In summary, the scatter plot reveals that CHE and CHOL values are generally lower in Cirrhosis patients, with data points predominantly clustered in the lower-left region of the plot. Conversely, while there may be reductions in CHE and CHOL values for Fibrosis and Hepatitis patients, these reductions are less pronounced and tend to vary according to the severity of the disease, resulting in a more dispersed distribution of data points across the plot.
+
+```{r Scatter plot of CHE VS. CHOL for patients of Cirrhosis, Fibrosis and, Hepatitis}
+ggplot(data = subset(df, Category == "Cirrhosis" |
+                       Category == "Hepatitis" |
+                       Category == "Fibrosis"),
+       aes(x = CHE, y = CHOL)) +
+  geom_point(aes(color = Category)) +
+  scale_x_continuous(breaks = seq(0, 16, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 10, by = 1)) +
+  labs(caption = "Prepared by ST") +
+  ggtitle("Scatter Plot of CHE vs. CHOL for the Patients of Cirrhosis, Fibrosis, Hepatitis") +
+  scale_color_manual(values = c("Cirrhosis" = "#FF2D00",
+                                "Hepatitis" = "#00FFD8",
+                                "Fibrosis" = "#0F00FF"))
+```
+
+Let's compare the BIL (bilirubin) values for patients with Cirrhosis, Fibrosis, and Hepatitis. Upon examination, it is evident that Cirrhosis patients have significantly higher average BIL values compared to the other two patient groups. When reviewing a graph for Fibrosis and Hepatitis patients, we observe that the average BIL values are nearly equal. In summary, Cirrhosis patients generally exhibit the highest average BIL values. This indicates severe impairment of liver function, resulting in inefficient processing of bilirubin by the liver. BIL values for Fibrosis and Hepatitis patients vary depending on the progression of the disease. Additionally, all three patient categories show outlier values in terms of BIL levels.
+
+```{r Box plots of BIL by Cirrhosis, Fibrosis and Hepatitis patients}
+ggplot(data = subset(df, Category == "Cirrhosis" |
+                       Category == "Hepatitis" |
+                       Category == "Fibrosis"),
+       aes(x = Category, y = BIL)) +
+  geom_boxplot(aes(fill = Category), color = "black") +
+  ggtitle("Box Plots of BIL by Cirrhosis, Fibrosis, and Hepatitis Patients") +
+  labs(caption = "Prepared by ST")
+  
+```
+
+We have thoroughly analyzed our dataset, examining the relationships between various variables and interpreting them by categories. Our next step involves dividing the dataset into training and testing sets. Subsequently, we will construct several machine learning models to select the most consistent model based on parameters. This approach aims to identify the model that best fits the data and optimizes performance. We will evaluate different machine learning algorithms to achieve this goal.
+
+```{r Test and Train Split, warning=FALSE}
+library(caTools)
+set.seed(101)
+df <- select(df, -X)
+df$Category <- as.factor(df$Category)
+split <- sample.split(df$Category, SplitRatio = 0.7)
+train <- subset(df, split == TRUE)
+test <- subset(df, split == FALSE)
+```
+
+```{r Loading the necessary libs and defining the parameter grid of the ct, message=FALSE, warning=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+param.grid.ct <- expand.grid(cp = seq(0.01, 1, by = 0.01))
+```
+
+```{r Control parameter of the ct}
+set.seed(101)
+ctrl.ct <- trainControl(method = "cv", 
+                        number = 5)
+```
+
+```{r Selecting the best parameters for the ct}
+set.seed(101)
+parameter.search.ct <- train(Category ~.,
+                             data = train,
+                             method = "rpart",
+                             trControl = ctrl.ct,
+                             tuneGrid = param.grid.ct)
+```
+
+```{r Best tune of the ct}
+set.seed(101)
+parameter.search.ct$bestTune$cp
+```
+
+```{r Building the ct model}
+set.seed(101)
+ct.model <- rpart(Category ~.,
+                  data = train,
+                  cp = parameter.search.ct$bestTune$cp)
+```
+
+```{r Cross-validation error vs. CP}
+plotcp(ct.model)
+```
+
+```{r Complexity parameters vs. accuracy (CV) plot}
+plot(parameter.search.ct)
+```
+
+```{r Classification tree plot}
+rpart.plot(ct.model, digits = 3, box.palette = "hotpink")
+```
+
+```{r predictions of the ct model}
+ct.preds <- predict(ct.model, test, type = "class")
+```
+
+Now, let us examine the performance metrics of the classification tree model we have developed. Starting with sensitivity, we observe high sensitivity values for the Blood Donor and Fibrosis categories. This indicates that our model effectively identifies blood donors and fibrosis patients. On the other hand, it struggles to detect Cirrhosis and Hepatitis & Suspect Blood Donor cases. When we consider specificity values, we see that the model accurately identifies individuals who do not have Cirrhosis, Fibrosis, and Hepatitis & Suspect Blood Donor conditions. However, it faces challenges in correctly identifying those who are not blood donors within the blood donor category. It is important to note that our dataset is statistically imbalanced, which can be inferred by looking at the prevalence. To improve the quality of the dataset, data collection efforts should focus on the groups with low prevalence.
+
+```{r Confusion matrix of the ct model}
+confusionMatrix(ct.preds, test$Category)
+```
+
+Now, let's develop our second model using a random forest algorithm, fine-tuning the necessary parameters.
+
+```{r Loading the necessary libs and defining the parameter grid of the rf}
+param.grid.rf <- expand.grid(mtry = c(1, 2, 3, 4, 5))
+```
+
+```{r Control parameter of the rf}
+set.seed(101)
+ctrl.rf <- trainControl(method = "cv",
+                        number = 5)
+```
+
+```{r Selecting the best parameters of the rf, warning=FALSE}
+parameter.search.rf <- train(Category ~.,
+                             data = train,
+                             method = "rf",
+                             trControl = ctrl.rf,
+                             tuneGrid = param.grid.rf)
+```
+
+```{r Best tune of the rf}
+plot(parameter.search.rf)
+```
+
+```{r Building the rf model with the best tune parameter mtry, message=FALSE, warning=FALSE}
+library(randomForest)
+set.seed(101)
+rf.model <- randomForest(Category ~.,
+                         train,
+                         mtry = parameter.search.rf$bestTune$mtry,
+                         ntree = 10
+                         )
+```
+
+```{r Predictions of the rf model}
+rf.preds <- predict(rf.model, test)
+```
+
+Now, let’s examine the performance metrics. We observe an accuracy rate of 92.39%. Our Kappa value stands at 0.6483. This indicates that the model we have created performs well. It demonstrates excellent performance in the Blood Donor category but struggles to detect the Suspect Blood Donor category. This is due to the low prevalence of this category, and this issue can be mitigated by adding more data. While the model effectively identifies the Cirrhosis category, it shows moderate performance for the Fibrosis and Hepatitis categories.
+
+```{r Confusion matrix of the rf model}
+confusionMatrix(rf.preds, test$Category)
+```
+
+When we look at the variable importance plot, we see that the AST value is the most important variable, while the age variable has low importance. A high importance of a variable indicates how much it contributes to and affects the model's prediction. In the model we created, the AST variable has the highest importance. This means that in determining the disease category (Cirrhosis, Fibrosis, etc.), it has a stronger effect than other variables.
+
+```{r Variable importance of the rf model, message=FALSE, warning=FALSE}
+library(vip)
+vip(rf.model)
+```
+
+## CT MODEL METRICS
+
+Sensitivity (True Positive Rate): High for Blood Donors (0.9938), but significantly lower for Cirrhosis (0.4444) and Hepatitis (0.0000).
+
+Specificity (True Negative Rate): Generally high across all conditions except for Blood Donors (0.7083).
+
+Positive Predictive Value (PPV): Varies widely, with some values not available (NaN) due to zero denominators.
+
+Negative Predictive Value (NPV): Consistently high across all conditions.
+
+Prevalence: Indicates how common each condition is within the sample population.
+
+Detection Rate: Proportional to Sensitivity and Prevalence combined.
+
+Detection Prevalence: Close to or slightly higher than Prevalence rates.
+
+Balanced Accuracy: Moderate to high across most conditions.
+
+## RF MODEL METRICS
+
+Sensitivity: Perfect (1.0000) for Blood Donors, but lower for other conditions.
+
+Specificity: High across all conditions.
+
+PPV: Generally good, especially for suspect Blood Donors and Fibrosis.
+
+NPV: High for all conditions.
+
+Prevalence: Same as in the CT model.
+
+Detection Rate: Reflects Sensitivity and Prevalence.
+
+Detection Prevalence: Similar to Prevalence rates.
+
+Balanced Accuracy: Good overall, especially for suspect Blood Donors and Fibrosis.
+
+These metrics help evaluate the models’ effectiveness in identifying liver conditions. High sensitivity means good detection of true positives, while high specificity indicates accurate recognition of true negatives. PPV tells us how likely a positive result corresponds to the actual condition, and NPV indicates the likelihood of a negative result being truly negative. These insights are crucial for clinical decision-making.
